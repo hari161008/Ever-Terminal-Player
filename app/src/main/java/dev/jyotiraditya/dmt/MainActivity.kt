@@ -67,6 +67,18 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    LaunchedEffect(state.settings.keepScreenOn) {
+                        if (state.settings.keepScreenOn) {
+                            this@MainActivity.window.addFlags(
+                                android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                            )
+                        } else {
+                            this@MainActivity.window.clearFlags(
+                                android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                            )
+                        }
+                    }
+
                     val saveDocumentLauncher = rememberLauncherForActivityResult(
                         ActivityResultContracts.CreateDocument("audio/*")
                     ) { uri ->

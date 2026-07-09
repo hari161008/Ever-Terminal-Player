@@ -99,6 +99,12 @@ fun SettingsPane(state: DmtState, dispatch: (DmtAction) -> Unit) {
         ) {
             dispatch(DmtAction.Config(settings.copy(skipSilence = !settings.skipSilence)))
         }
+        SettingRow(
+            label = stringResource(R.string.set_keep_screen_on),
+            value = if (settings.keepScreenOn) on else off
+        ) {
+            dispatch(DmtAction.Config(settings.copy(keepScreenOn = !settings.keepScreenOn)))
+        }
         Caption(stringResource(R.string.tools))
         SettingRow(
             label = stringResource(R.string.set_eq),

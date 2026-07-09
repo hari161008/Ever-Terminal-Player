@@ -65,6 +65,7 @@
     <string name="set_fullscreen">full screen</string>
     <string name="set_light_mode">light mode</string>
     <string name="set_skip_silence">skip silence</string>
+    <string name="set_keep_screen_on">keep screen on</string>
     <string name="set_clear_cache">clear stream cache</string>
     <string name="cache_cleared">cache cleared</string>
     <string name="audio">audio</string>

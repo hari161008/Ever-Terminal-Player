@@ -37,6 +37,7 @@ import dev.jyotiraditya.dmt.data.KEY_LAST_FOLDER
 import dev.jyotiraditya.dmt.data.KEY_YT_PINNED
 import dev.jyotiraditya.dmt.data.KEY_LIGHT_MODE
 import dev.jyotiraditya.dmt.data.KEY_SKIP_SILENCE
+import dev.jyotiraditya.dmt.data.KEY_KEEP_SCREEN_ON
 import dev.jyotiraditya.dmt.data.KEY_RAW
 import dev.jyotiraditya.dmt.data.KEY_FULLSCREEN
 import dev.jyotiraditya.dmt.data.KEY_SPEED
@@ -101,6 +102,7 @@ data class DmtSettings(
     val fullScreen: Boolean = true,
     val lightMode: Boolean = false,
     val skipSilence: Boolean = false,
+    val keepScreenOn: Boolean = false,
 )
 
 data class DmtState(
@@ -188,7 +190,8 @@ sealed interface DmtAction {
 
 private const val QUEUE_CAP = 500
 private const val QUEUE_LOOKBACK = 100
-private const val KEY_SPACE = "Space"
+private const val KEY_PLAY = "Play"
+private const val KEY_PAUSE = "Pause"
 private const val KEY_ARROW_RIGHT = "ArrowRight"
 private const val KEY_ARROW_LEFT = "ArrowLeft"
 private const val REMOTE_ART_USER_AGENT =
@@ -228,6 +231,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 fullScreen = prefs[KEY_FULLSCREEN] ?: true,
                 lightMode = prefs[KEY_LIGHT_MODE] ?: false,
                 skipSilence = prefs[KEY_SKIP_SILENCE] ?: false,
+                keepScreenOn = prefs[KEY_KEEP_SCREEN_ON] ?: false,
             )
             _state.update { it.copy(settings = settings) }
             applyIcon(settings.accent)
@@ -343,8 +347,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             DmtAction.TogglePlay -> {
+                val nextPlaying = !_state.value.isPlaying
                 c?.togglePlayPause()
-                if (_state.value.ytVideoMode) sendYtVideoKey(KEY_SPACE)
+                if (_state.value.ytVideoMode) sendYtVideoKey(if (nextPlaying) KEY_PLAY else KEY_PAUSE)
             }
             DmtAction.Next -> {
                 if (_state.value.ytVideoMode) sendYtVideoKey(KEY_ARROW_RIGHT) else c?.seekToNext()
@@ -387,6 +392,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                         it[KEY_FULLSCREEN] = action.settings.fullScreen
                         it[KEY_LIGHT_MODE] = action.settings.lightMode
                         it[KEY_SKIP_SILENCE] = action.settings.skipSilence
+                        it[KEY_KEEP_SCREEN_ON] = action.settings.keepScreenOn
                     }
                 }
                 if (old.cols != action.settings.cols) loadCover(c?.currentMediaItem)
