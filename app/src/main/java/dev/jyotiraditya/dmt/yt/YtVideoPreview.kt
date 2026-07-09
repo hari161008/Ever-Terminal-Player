@@ -1,10 +1,17 @@
 package dev.jyotiraditya.dmt.yt
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.net.Uri
+import android.view.View
+import android.view.ViewGroup
+import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.FrameLayout
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -12,13 +19,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.viewinterop.AndroidView
 
-/** Shows a real, unmuted YouTube page in a WebView: it searches YouTube for
- * [query] (the currently playing track's title + artist), auto-clicks the
- * first search result, and lets that watch page's own player provide both
- * video and audio. dmt's own audio pipeline is muted by the view model while
- * this is active, so there's only one audio source at a time. */
+/** Shows a real, unmuted YouTube page in a small preview box: it searches
+ * YouTube for [query] (the currently playing track's title + artist),
+ * auto-clicks the first search result, and lets that watch page's own
+ * player provide both video and audio. dmt's own audio pipeline is muted by
+ * the view model while this is active, so there's only one audio source at
+ * a time.
+ *
+ * The YouTube page's own fullscreen control (tap the fullscreen icon, or
+ * press "f") works normally here: a [WebChromeClient] hands the fullscreen
+ * `<video>` element off to the activity's root view so it can cover the
+ * whole screen, then hands it back to this preview box when fullscreen is
+ * exited. */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun YtVideoPreview(
@@ -31,9 +46,11 @@ fun YtVideoPreview(
     // a stale video.
     key(query) {
         var webView by remember { mutableStateOf<WebView?>(null) }
+        val composeView = LocalView.current
+        val activity = composeView.context as? Activity
 
         AndroidView(
-            modifier = modifier,
+            modifier = modifier.aspectRatio(16f / 9f),
             factory = { context ->
                 WebView(context).apply {
                     settings.javaScriptEnabled = true
@@ -56,6 +73,11 @@ fun YtVideoPreview(
                             }
                         }
                     }
+                    webChromeClient = if (activity != null) {
+                        FullscreenVideoChromeClient(activity)
+                    } else {
+                        WebChromeClient()
+                    }
                     val searchUrl = "https://m.youtube.com/results?search_query=" +
                         Uri.encode(query)
                     loadUrl(searchUrl)
@@ -69,12 +91,72 @@ fun YtVideoPreview(
             }
         )
 
+        DisposableEffect(Unit) {
+            onDispose {
+                (webView?.webChromeClient as? FullscreenVideoChromeClient)?.exitFullscreenIfNeeded()
+            }
+        }
+
         LaunchedEffect(isPlaying) {
             webView?.evaluateJavascript(
                 if (isPlaying) PLAY_JS else PAUSE_JS,
                 null
             )
         }
+    }
+}
+
+/** Lets the WebView's HTML5 fullscreen video (the YouTube page's own
+ * fullscreen button / "f" shortcut) actually cover the whole screen, by
+ * moving the browser-supplied custom view into the activity's root content
+ * view for the duration of fullscreen, then removing it again. */
+private class FullscreenVideoChromeClient(private val activity: Activity) : WebChromeClient() {
+    private var customView: View? = null
+    private var customViewCallback: CustomViewCallback? = null
+    private var originalSystemUiVisibility = 0
+
+    private val rootView: ViewGroup?
+        get() = activity.window?.decorView as? ViewGroup
+
+    override fun onShowCustomView(view: View, callback: CustomViewCallback) {
+        if (customView != null) {
+            callback.onCustomViewHidden()
+            return
+        }
+        customView = view
+        customViewCallback = callback
+        val decor = rootView ?: return
+
+        @Suppress("DEPRECATION")
+        originalSystemUiVisibility = decor.systemUiVisibility
+        @Suppress("DEPRECATION")
+        decor.systemUiVisibility = View.SYSTEM_UI_FLAG_LOW_PROFILE or
+            View.SYSTEM_UI_FLAG_FULLSCREEN or
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+
+        decor.addView(
+            view,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+    }
+
+    override fun onHideCustomView() {
+        val view = customView ?: return
+        val decor = rootView
+        decor?.removeView(view)
+        @Suppress("DEPRECATION")
+        decor?.systemUiVisibility = originalSystemUiVisibility
+        customView = null
+        customViewCallback?.onCustomViewHidden()
+        customViewCallback = null
+    }
+
+    fun exitFullscreenIfNeeded() {
+        if (customView != null) onHideCustomView()
     }
 }
 

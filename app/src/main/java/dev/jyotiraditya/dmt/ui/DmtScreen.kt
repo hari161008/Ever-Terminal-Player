@@ -10,7 +10,6 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -39,7 +38,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -48,7 +46,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.jyotiraditya.dmt.R
 import dev.jyotiraditya.dmt.ui.components.Caption
-import dev.jyotiraditya.dmt.ui.components.TuiKey
 import dev.jyotiraditya.dmt.ui.components.TuiPanel
 import dev.jyotiraditya.dmt.ui.components.TuiTab
 import dev.jyotiraditya.dmt.ui.player.ExpandedPlayer
@@ -68,7 +65,6 @@ import dev.jyotiraditya.dmt.ui.theme.LocalAccent
 import dev.jyotiraditya.dmt.ui.theme.TuiBg
 import dev.jyotiraditya.dmt.ui.theme.TuiBright
 import dev.jyotiraditya.dmt.ui.theme.TuiDim
-import dev.jyotiraditya.dmt.yt.YtVideoPreview
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -189,66 +185,6 @@ fun DmtScreen(
                 SheetHeader(title = stringResource(R.string.track_info))
                 InfoContent(state)
             }
-        }
-
-        val videoQuery = listOf(state.title, state.artist)
-            .filter { it.isNotBlank() }
-            .joinToString(" ")
-            .trim()
-            .let { if (it.isNotBlank()) "$it Video song" else it }
-        if (state.ytVideoMode && videoQuery.isNotBlank()) {
-            YtFullScreenVideo(
-                query = videoQuery,
-                state = state,
-                dispatch = dispatch
-            )
-        }
-    }
-}
-
-@Composable
-private fun YtFullScreenVideo(
-    query: String,
-    state: DmtState,
-    dispatch: (DmtAction) -> Unit,
-) {
-    BackHandler { dispatch(DmtAction.ToggleYtVideoMode) }
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black)
-    ) {
-        YtVideoPreview(
-            query = query,
-            isPlaying = state.isPlaying,
-            modifier = Modifier.fillMaxSize()
-        )
-        Row(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .windowInsetsPadding(WindowInsets.safeDrawing)
-                .padding(16.dp)
-        ) {
-            TuiKey(label = stringResource(R.string.close), bright = true) {
-                dispatch(DmtAction.ToggleYtVideoMode)
-            }
-        }
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .windowInsetsPadding(WindowInsets.safeDrawing)
-                .padding(24.dp)
-        ) {
-            TuiKey(label = "|<<", big = true) { dispatch(DmtAction.Prev) }
-            TuiKey(
-                label = if (state.isPlaying) "  ||  " else "  |>  ",
-                bright = true,
-                big = true
-            ) {
-                dispatch(DmtAction.TogglePlay)
-            }
-            TuiKey(label = ">>|", big = true) { dispatch(DmtAction.Next) }
         }
     }
 }

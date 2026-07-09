@@ -83,6 +83,7 @@ import dev.jyotiraditya.dmt.ui.theme.TuiFaint
 import dev.jyotiraditya.dmt.ui.theme.TuiFg
 import dev.jyotiraditya.dmt.ui.theme.TuiLine
 import dev.jyotiraditya.dmt.ui.theme.TuiSurface
+import dev.jyotiraditya.dmt.yt.YtVideoPreview
 import kotlinx.coroutines.launch
 
 @Composable
@@ -334,8 +335,23 @@ private fun ArtSlot(
     modifier: Modifier = Modifier,
 ) {
     val lyrics = state.lyrics
+    val searchQuery = listOf(state.title, state.artist)
+        .filter { it.isNotBlank() }
+        .joinToString(" ")
+        .trim()
+        .let { if (it.isNotBlank()) "$it Video song" else it }
 
     when {
+        state.ytVideoMode && searchQuery.isNotBlank() -> {
+            TuiPanel(modifier = modifier) {
+                YtVideoPreview(
+                    query = searchQuery,
+                    isPlaying = state.isPlaying,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
+            }
+        }
+
         showLyrics && lyrics != null -> {
             val aspect = state.cover?.let { it.width.toFloat() / it.height } ?: 1f
             LyricsPanel(
