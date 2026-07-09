@@ -83,6 +83,7 @@ import dev.jyotiraditya.dmt.ui.theme.TuiFaint
 import dev.jyotiraditya.dmt.ui.theme.TuiFg
 import dev.jyotiraditya.dmt.ui.theme.TuiLine
 import dev.jyotiraditya.dmt.ui.theme.TuiSurface
+import dev.jyotiraditya.dmt.yt.YT_ID_PREFIX
 import dev.jyotiraditya.dmt.yt.YtVideoPreview
 import kotlinx.coroutines.launch
 
@@ -182,7 +183,7 @@ private fun PortraitPlayer(
             hasLyrics = state.lyrics != null,
             showLyrics = showLyrics,
             onToggleLyrics = onToggleLyrics,
-            hasVideo = state.title.isNotBlank(),
+            hasVideo = state.nowPlayingId?.startsWith(YT_ID_PREFIX) == true,
             videoMode = state.ytVideoMode,
         )
 
@@ -238,7 +239,7 @@ private fun LandscapePlayer(
                 hasLyrics = state.lyrics != null,
                 showLyrics = showLyrics,
                 onToggleLyrics = onToggleLyrics,
-                hasVideo = state.title.isNotBlank(),
+                hasVideo = state.nowPlayingId?.startsWith(YT_ID_PREFIX) == true,
                 videoMode = state.ytVideoMode,
             )
 
@@ -335,18 +336,18 @@ private fun ArtSlot(
     modifier: Modifier = Modifier,
 ) {
     val lyrics = state.lyrics
-    val searchQuery = listOf(state.title, state.artist)
-        .filter { it.isNotBlank() }
-        .joinToString(" ")
-        .trim()
-        .let { if (it.isNotBlank()) "$it Video song" else it }
+    val videoId = state.nowPlayingId
+        ?.takeIf { it.startsWith(YT_ID_PREFIX) }
+        ?.removePrefix(YT_ID_PREFIX)
 
     when {
-        state.ytVideoMode && searchQuery.isNotBlank() -> {
+        state.ytVideoMode && videoId != null -> {
             TuiPanel(modifier = modifier) {
                 YtVideoPreview(
-                    query = searchQuery,
+                    videoId = videoId,
+                    title = state.title,
                     isPlaying = state.isPlaying,
+                    keyEvent = state.ytVideoKey,
                     modifier = Modifier.align(Alignment.CenterHorizontally)
                 )
             }

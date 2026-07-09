@@ -147,7 +147,13 @@ data class DmtState(
     val ytPinned: List<Innertube.SongItem> = emptyList(),
     val ytSavingId: String? = null,
     val ytVideoMode: Boolean = false,
+    val ytVideoKey: YtVideoKey? = null,
 )
+
+/** A one-shot signal telling the active [dev.jyotiraditya.dmt.yt.YtVideoPreview]
+ * to simulate a keypress on the YouTube page — the [nonce] only exists so a
+ * repeat of the same key still triggers a fresh LaunchedEffect. */
+data class YtVideoKey(val key: String, val nonce: Long)
 
 sealed interface DmtAction {
     data class Permission(val granted: Boolean) : DmtAction
@@ -182,6 +188,9 @@ sealed interface DmtAction {
 
 private const val QUEUE_CAP = 500
 private const val QUEUE_LOOKBACK = 100
+private const val KEY_SPACE = "Space"
+private const val KEY_ARROW_RIGHT = "ArrowRight"
+private const val KEY_ARROW_LEFT = "ArrowLeft"
 private const val REMOTE_ART_USER_AGENT =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
@@ -333,9 +342,16 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 play()
             }
 
-            DmtAction.TogglePlay -> c?.togglePlayPause()
-            DmtAction.Next -> c?.seekToNext()
-            DmtAction.Prev -> c?.seekToPrevious()
+            DmtAction.TogglePlay -> {
+                c?.togglePlayPause()
+                if (_state.value.ytVideoMode) sendYtVideoKey(KEY_SPACE)
+            }
+            DmtAction.Next -> {
+                if (_state.value.ytVideoMode) sendYtVideoKey(KEY_ARROW_RIGHT) else c?.seekToNext()
+            }
+            DmtAction.Prev -> {
+                if (_state.value.ytVideoMode) sendYtVideoKey(KEY_ARROW_LEFT) else c?.seekToPrevious()
+            }
             DmtAction.ToggleShuffle -> c?.run { shuffleModeEnabled = !shuffleModeEnabled }
             DmtAction.CycleRepeat -> c?.cycleRepeat()
 
@@ -508,6 +524,10 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 )
             )
         }
+    }
+
+    private fun sendYtVideoKey(key: String) {
+        _state.update { it.copy(ytVideoKey = YtVideoKey(key, System.nanoTime())) }
     }
 
     private fun toggleYtVideoMode() {
