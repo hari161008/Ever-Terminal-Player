@@ -1,0 +1,110 @@
+[
+    {
+        "merged": "dev.jyotiraditya.dmt.app-debug-3:/xml_backup_rules.xml.flat",
+        "source": "dev.jyotiraditya.dmt.app-main-5:/xml/backup_rules.xml"
+    },
+    {
+        "merged": "dev.jyotiraditya.dmt.app-debug-3:/mipmap-anydpi_ic_launcher_moss.xml.flat",
+        "source": "dev.jyotiraditya.dmt.app-main-5:/mipmap-anydpi/ic_launcher_moss.xml"
+    },
+    {
+        "merged": "dev.jyotiraditya.dmt.app-debug-3:/font_jetbrains_mono.ttf.flat",
+        "source": "dev.jyotiraditya.dmt.app-main-5:/font/jetbrains_mono.ttf"
+    },
+    {
+        "merged": "dev.jyotiraditya.dmt.app-debug-3:/xml_data_extraction_rules.xml.flat",
+        "source": "dev.jyotiraditya.dmt.app-main-5:/xml/data_extraction_rules.xml"
+    },
+    {
+        "merged": "dev.jyotiraditya.dmt.app-debug-3:/xml_automotive_app_desc.xml.flat",
+        "source": "dev.jyotiraditya.dmt.app-main-5:/xml/automotive_app_desc.xml"
+    },
+    {
+        "merged": "dev.jyotiraditya.dmt.app-debug-3:/mipmap-hdpi_ic_launcher.webp.flat",
+        "source": "dev.jyotiraditya.dmt.app-main-5:/mipmap-hdpi/ic_launcher.webp"
+    },
+    {
+        "merged": "dev.jyotiraditya.dmt.app-debug-3:/mipmap-mdpi_ic_launcher_round.webp.flat",
+        "source": "dev.jyotiraditya.dmt.app-main-5:/mipmap-mdpi/ic_launcher_round.webp"
+    },
+    {
+        "merged": "dev.jyotiraditya.dmt.app-debug-3:/drawable_ic_launcher_fg_moss.xml.flat",
+        "source": "dev.jyotiraditya.dmt.app-main-5:/drawable/ic_launcher_fg_moss.xml"
+    },
+    {
+        "merged": "dev.jyotiraditya.dmt.app-debug-3:/drawable_ic_launcher_fg_steel.xml.flat",
+        "source": "dev.jyotiraditya.dmt.app-main-5:/drawable/ic_launcher_fg_steel.xml"
+    },
+    {
+        "merged": "dev.jyotiraditya.dmt.app-debug-3:/mipmap-anydpi_ic_launcher_round.xml.flat",
+        "source": "dev.jyotiraditya.dmt.app-main-5:/mipmap-anydpi/ic_launcher_round.xml"
+    },
+    {
+        "merged": "dev.jyotiraditya.dmt.app-debug-3:/mipmap-anydpi_ic_launcher_mono.xml.flat",
+        "source": "dev.jyotiraditya.dmt.app-main-5:/mipmap-anydpi/ic_launcher_mono.xml"
+    },
+    {
+        "merged": "dev.jyotiraditya.dmt.app-debug-3:/mipmap-hdpi_ic_launcher_round.webp.flat",
+        "source": "dev.jyotiraditya.dmt.app-main-5:/mipmap-hdpi/ic_launcher_round.webp"
+    },
+    {
+        "merged": "dev.jyotiraditya.dmt.app-debug-3:/mipmap-xxxhdpi_ic_launcher_round.webp.flat",
+        "source": "dev.jyotiraditya.dmt.app-main-5:/mipmap-xxxhdpi/ic_launcher_round.webp"
+    },
+    {
+        "merged": "dev.jyotiraditya.dmt.app-debug-3:/mipmap-xhdpi_ic_launcher_round.webp.flat",
+        "source": "dev.jyotiraditya.dmt.app-main-5:/mipmap-xhdpi/ic_launcher_round.webp"
+    },
+    {
+        "merged": "dev.jyotiraditya.dmt.app-debug-3:/mipmap-mdpi_ic_launcher.webp.flat",
+        "source": "dev.jyotiraditya.dmt.app-main-5:/mipmap-mdpi/ic_launcher.webp"
+    },
+    {
+        "merged": "dev.jyotiraditya.dmt.app-debug-3:/font_jetbrains_mono_bold.ttf.flat",
+        "source": "dev.jyotiraditya.dmt.app-main-5:/font/jetbrains_mono_bold.ttf"
+    },
+    {
+        "merged": "dev.jyotiraditya.dmt.app-debug-3:/mipmap-xhdpi_ic_launcher.webp.flat",
+        "source": "dev.jyotiraditya.dmt.app-main-5:/mipmap-xhdpi/ic_launcher.webp"
+    },
+    {
+        "merged": "dev.jyotiraditya.dmt.app-debug-3:/mipmap-xxhdpi_ic_launcher_round.webp.flat",
+        "source": "dev.jyotiraditya.dmt.app-main-5:/mipmap-xxhdpi/ic_launcher_round.webp"
+    },
+    {
+        "merged": "dev.jyotiraditya.dmt.app-debug-3:/drawable_ic_launcher_background.xml.flat",
+        "source": "dev.jyotiraditya.dmt.app-main-5:/drawable/ic_launcher_background.xml"
+    },
+    {
+        "merged": "dev.jyotiraditya.dmt.app-debug-3:/drawable_ic_launcher_foreground.xml.flat",
+        "source": "dev.jyotiraditya.dmt.app-main-5:/drawable/ic_launcher_foreground.xml"
+    },
+    {
+        "merged": "dev.jyotiraditya.dmt.app-debug-3:/drawable_ic_launcher_fg_mono.xml.flat",
+        "source": "dev.jyotiraditya.dmt.app-main-5:/drawable/ic_launcher_fg_mono.xml"
+    },
+    {
+        "merged": "dev.jyotiraditya.dmt.app-debug-3:/drawable_ic_stat_dmt.xml.flat",
+        "source": "dev.jyotiraditya.dmt.app-main-5:/drawable/ic_stat_dmt.xml"
+    },
+    {
+        "merged": "dev.jyotiraditya.dmt.app-debug-3:/mipmap-anydpi_ic_launcher.xml.flat",
+        "source": "dev.jyotiraditya.dmt.app-main-5:/mipmap-anydpi/ic_launcher.xml"
+    },
+    {
+        "merged": "dev.jyotiraditya.dmt.app-debug-3:/mipmap-xxxhdpi_ic_launcher.webp.flat",
+        "source": "dev.jyotiraditya.dmt.app-main-5:/mipmap-xxxhdpi/ic_launcher.webp"
+    },
+    {
+        "merged": "dev.jyotiraditya.dmt.app-debug-3:/mipmap-xxhdpi_ic_launcher.webp.flat",
+        "source": "dev.jyotiraditya.dmt.app-main-5:/mipmap-xxhdpi/ic_launcher.webp"
+    },
+    {
+        "merged": "dev.jyotiraditya.dmt.app-debug-3:/mipmap-anydpi_ic_launcher_orange.xml.flat",
+        "source": "dev.jyotiraditya.dmt.app-main-5:/mipmap-anydpi/ic_launcher_orange.xml"
+    },
+    {
+        "merged": "dev.jyotiraditya.dmt.app-debug-3:/mipmap-anydpi_ic_launcher_steel.xml.flat",
+        "source": "dev.jyotiraditya.dmt.app-main-5:/mipmap-anydpi/ic_launcher_steel.xml"
+    }
+]

@@ -173,6 +173,7 @@ sealed interface DmtAction {
     data object ToggleShuffle : DmtAction
     data object CycleRepeat : DmtAction
     data class Seek(val fraction: Float) : DmtAction
+    data class YtVideoProgress(val positionMs: Long, val durationMs: Long) : DmtAction
     data class Expand(val value: Boolean) : DmtAction
     data class RemoveAt(val index: Int) : DmtAction
     data object CycleSleep : DmtAction
@@ -194,6 +195,7 @@ private const val KEY_PLAY = "Play"
 private const val KEY_PAUSE = "Pause"
 private const val KEY_ARROW_RIGHT = "ArrowRight"
 private const val KEY_ARROW_LEFT = "ArrowLeft"
+const val KEY_SEEK_PREFIX = "Seek:"
 private const val REMOTE_ART_USER_AGENT =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
@@ -360,12 +362,31 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             DmtAction.ToggleShuffle -> c?.run { shuffleModeEnabled = !shuffleModeEnabled }
             DmtAction.CycleRepeat -> c?.cycleRepeat()
 
-            is DmtAction.Seek -> c?.run {
-                val duration = _state.value.durationMs
-                if (duration > 0) {
-                    val target = (action.fraction * duration).toLong()
-                    seekTo(target)
-                    _state.update { it.copy(positionMs = target) }
+            is DmtAction.Seek -> {
+                if (_state.value.ytVideoMode) {
+                    val duration = _state.value.durationMs
+                    if (duration > 0) {
+                        val target = (action.fraction * duration).toLong()
+                        _state.update { it.copy(positionMs = target) }
+                    }
+                    sendYtVideoKey("$KEY_SEEK_PREFIX${action.fraction}")
+                } else {
+                    c?.run {
+                        val duration = _state.value.durationMs
+                        if (duration > 0) {
+                            val target = (action.fraction * duration).toLong()
+                            seekTo(target)
+                            _state.update { it.copy(positionMs = target) }
+                        }
+                    }
+                }
+            }
+
+            is DmtAction.YtVideoProgress -> {
+                if (_state.value.ytVideoMode) {
+                    _state.update {
+                        it.copy(positionMs = action.positionMs, durationMs = action.durationMs)
+                    }
                 }
             }
 
@@ -561,8 +582,13 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         loadLyrics(c.currentMediaItem)
         restoreSession()
         while (isActive) {
-            val position = c.currentPosition.coerceAtLeast(0L)
-            val duration = c.duration.takeIf { d -> d != C.TIME_UNSET }?.coerceAtLeast(0L) ?: 0L
+            val videoMode = _state.value.ytVideoMode
+            val position = if (videoMode) _state.value.positionMs else c.currentPosition.coerceAtLeast(0L)
+            val duration = if (videoMode) {
+                _state.value.durationMs
+            } else {
+                c.duration.takeIf { d -> d != C.TIME_UNSET }?.coerceAtLeast(0L) ?: 0L
+            }
             val index = c.currentMediaItemIndex
             val sleepLeft = sleepEndAt?.let { end ->
                 (end - System.currentTimeMillis()).coerceAtLeast(0L)

@@ -348,6 +348,7 @@ private fun ArtSlot(
                     title = state.title,
                     isPlaying = state.isPlaying,
                     keyEvent = state.ytVideoKey,
+                    onProgress = { pos, dur -> dispatch(DmtAction.YtVideoProgress(pos, dur)) },
                     modifier = Modifier.align(Alignment.CenterHorizontally)
                 )
             }

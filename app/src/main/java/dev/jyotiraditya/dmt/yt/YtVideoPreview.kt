@@ -24,7 +24,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import dev.jyotiraditya.dmt.ui.KEY_SEEK_PREFIX
 import dev.jyotiraditya.dmt.ui.YtVideoKey
+import kotlinx.coroutines.delay
 import java.net.URLEncoder
 
 /**
@@ -34,7 +36,10 @@ import java.net.URLEncoder
  * result's watch page (so the WebView actually fires a page-load callback
  * instead of silently soft-navigating), spoofs a viewport matching the
  * preview box's own 1095x657 ratio, and auto-engages YouTube's own
- * fullscreen player once the video is ready.
+ * fullscreen player once the video is ready — including clicking the
+ * left-pointing "more controls" chevron that YouTube shows instead of the
+ * fullscreen button when the player is too narrow to fit every control at
+ * once, which is what was silently swallowing the auto-click before.
  *
  * The resulting fullscreen custom view is added into this composable's own
  * container (sized to the box, never the device's actual screen), so
@@ -49,7 +54,10 @@ import java.net.URLEncoder
  * relayed in via [keyEvent] as a direct, deterministic play()/pause()/seek
  * call on the page's <video> element (paired with a simulated keypress for
  * YouTube's own on-screen feedback), so a tap always lands in the state dmt
- * asked for instead of racing a toggle.
+ * asked for instead of racing a toggle. The real video's own current time
+ * and duration are polled back out and reported via [onProgress] so dmt's
+ * own time slider tracks the actual YouTube video instead of the muted
+ * internal track running behind it.
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -58,6 +66,7 @@ fun YtVideoPreview(
     title: String,
     isPlaying: Boolean,
     keyEvent: YtVideoKey?,
+    onProgress: (positionMs: Long, durationMs: Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Keying on the id forces a fresh WebView + fresh search whenever the
@@ -171,12 +180,30 @@ fun YtVideoPreview(
         )
 
         // dmt's transport controls relay in here as a one-shot, deterministic
-        // command — always "make it Play" / "make it Pause" / "seek by this
-        // much" rather than an ambiguous toggle — so a tap always lands
+        // command — always "make it Play" / "make it Pause" / "seek to this
+        // fraction" rather than an ambiguous toggle — so a tap always lands
         // exactly where dmt asked instead of racing the page's own state.
         LaunchedEffect(keyEvent, watchPageReady) {
             if (watchPageReady && keyEvent != null) {
                 webView?.evaluateJavascript(commandJs(keyEvent.key), null)
+            }
+        }
+
+        // Polls the real YouTube video's current time/duration back out so
+        // dmt's own slider tracks what's actually on screen, instead of the
+        // muted internal track running behind it.
+        LaunchedEffect(watchPageReady) {
+            while (watchPageReady) {
+                webView?.evaluateJavascript(GET_PROGRESS_JS) { raw ->
+                    val cleaned = raw?.trim('"')?.takeIf { it.isNotEmpty() && it != "null" }
+                    val parts = cleaned?.split("|")
+                    val posSec = parts?.getOrNull(0)?.toDoubleOrNull()
+                    val durSec = parts?.getOrNull(1)?.toDoubleOrNull()
+                    if (posSec != null && durSec != null && durSec > 0) {
+                        onProgress((posSec * 1000).toLong(), (durSec * 1000).toLong())
+                    }
+                }
+                delay(500)
             }
         }
     }
@@ -244,12 +271,33 @@ private const val NAVIGATE_TO_FIRST_RESULT_JS = """
 """
 
 /** Runs on the watch page once it has actually finished loading. Starts
- * playback, then keeps retrying — via the "f" shortcut and a direct click
- * on the fullscreen button — until `document.fullscreenElement` actually
- * shows engaged or a generous timeout is hit, instead of trying once and
- * giving up, which is what made the fullscreen auto-click unreliable. */
+ * playback, then repeatedly tries to get the real player into fullscreen:
+ * on a narrow player like this preview box, YouTube collapses the
+ * right-side controls behind a left-pointing chevron ("more controls")
+ * button instead of showing the fullscreen button directly — clicking
+ * fullscreen before revealing that overflow is what was silently doing
+ * nothing before. Each pass now checks whether the fullscreen button is
+ * actually visible; if not, it hunts down and clicks the overflow toggle
+ * first, then the following pass finds the now-revealed fullscreen button. */
 private const val PLAY_AND_FULLSCREEN_JS = """
 (function() {
+  function visible(el) {
+    return !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+  }
+  function findOverflowToggle(root) {
+    var candidates = root.querySelectorAll('button, .ytp-button');
+    for (var i = 0; i < candidates.length; i++) {
+      var b = candidates[i];
+      var label = ((b.getAttribute('aria-label') || '') + ' ' + (b.getAttribute('title') || '') + ' ' + (b.className || '')).toLowerCase();
+      if (label.indexOf('more') !== -1 || label.indexOf('expand') !== -1 ||
+          label.indexOf('overflow') !== -1 || label.indexOf('chevron') !== -1 ||
+          label.indexOf('arrow') !== -1) {
+        return b;
+      }
+    }
+    return null;
+  }
+
   var readyTries = 0;
   var readyTimer = setInterval(function() {
     readyTries++;
@@ -269,17 +317,28 @@ private const val PLAY_AND_FULLSCREEN_JS = """
           return;
         }
         if (player.focus) { player.focus(); }
-        ['keydown', 'keyup'].forEach(function(type) {
-          var evt = new KeyboardEvent(type, {
-            key: 'f', code: 'KeyF', keyCode: 70, which: 70, bubbles: true
-          });
-          document.dispatchEvent(evt);
-          player.dispatchEvent(evt);
-        });
-        var btn = document.querySelector('.ytp-fullscreen-button');
-        if (btn) { btn.click(); }
-        if (fsTries > 20) { clearInterval(fsTimer); }
-      }, 300);
+
+        var rightControls = player.querySelector('.ytp-right-controls') || player;
+        var fsBtn = rightControls.querySelector('.ytp-fullscreen-button');
+
+        if (fsBtn && visible(fsBtn)) {
+          fsBtn.click();
+        } else {
+          var overflow = findOverflowToggle(rightControls) || findOverflowToggle(player);
+          if (overflow) {
+            overflow.click();
+          } else {
+            ['keydown', 'keyup'].forEach(function(type) {
+              var evt = new KeyboardEvent(type, {
+                key: 'f', code: 'KeyF', keyCode: 70, which: 70, bubbles: true
+              });
+              document.dispatchEvent(evt);
+              player.dispatchEvent(evt);
+            });
+          }
+        }
+        if (fsTries > 40) { clearInterval(fsTimer); }
+      }, 350);
     } else if (readyTries > 30) {
       clearInterval(readyTimer);
     }
@@ -287,39 +346,66 @@ private const val PLAY_AND_FULLSCREEN_JS = """
 })();
 """
 
+/** Reads back the real video's current time and duration (in seconds,
+ * `currentTime|duration`) so dmt's own slider can be kept in sync with
+ * what's actually playing on screen. */
+private const val GET_PROGRESS_JS = """
+(function() {
+  var video = document.querySelector('video');
+  if (!video || !isFinite(video.duration) || video.duration <= 0) { return ''; }
+  return video.currentTime + '|' + video.duration;
+})();
+"""
+
 /** Builds the JS for a one-shot transport command relayed in from dmt's own
- * controls. Play/Pause act directly on the <video> element so the result
- * is deterministic no matter what state the page thinks it's in, and the
- * arrows seek the element directly too — a simulated keypress is dispatched
- * alongside each so YouTube's own on-screen feedback (the seek flash, the
- * pause icon) still shows, but it's never load-bearing for the actual
- * state change. */
+ * controls. Play/Pause/Seek act directly on the <video> element so the
+ * result is deterministic no matter what state the page thinks it's in —
+ * retried briefly in case the element isn't available at the exact instant
+ * the command arrives — and a simulated keypress is dispatched alongside
+ * each so YouTube's own on-screen feedback (the seek flash, the pause
+ * icon) still shows, but it's never load-bearing for the actual change. */
 private fun commandJs(key: String): String {
-    val (code, keyCode, keyValue) = when (key) {
-        "ArrowRight" -> Triple("ArrowRight", 39, "ArrowRight")
-        "ArrowLeft" -> Triple("ArrowLeft", 37, "ArrowLeft")
+    val isSeek = key.startsWith(KEY_SEEK_PREFIX)
+    val fraction = if (isSeek) key.removePrefix(KEY_SEEK_PREFIX).toFloatOrNull() ?: 0f else 0f
+
+    val (code, keyCode, keyValue) = when {
+        isSeek -> Triple("ArrowRight", 39, "ArrowRight")
+        key == "ArrowRight" -> Triple("ArrowRight", 39, "ArrowRight")
+        key == "ArrowLeft" -> Triple("ArrowLeft", 37, "ArrowLeft")
         else -> Triple("Space", 32, " ")
     }
-    val action = when (key) {
-        "Play" -> "video.play().catch(function() {});"
-        "Pause" -> "video.pause();"
-        "ArrowRight" -> "video.currentTime = Math.min(video.duration || Infinity, video.currentTime + 5);"
-        "ArrowLeft" -> "video.currentTime = Math.max(0, video.currentTime - 5);"
+
+    val action = when {
+        isSeek -> "if (isFinite(video.duration) && video.duration > 0) { video.currentTime = $fraction * video.duration; }"
+        key == "Play" -> "video.play().catch(function() {});"
+        key == "Pause" -> "video.pause();"
+        key == "ArrowRight" -> "video.currentTime = Math.min(video.duration || Infinity, video.currentTime + 5);"
+        key == "ArrowLeft" -> "video.currentTime = Math.max(0, video.currentTime - 5);"
         else -> ""
     }
+
     return """
 (function() {
-  var player = document.querySelector('#movie_player');
-  var video = document.querySelector('video');
-  if (player && player.focus) { player.focus(); }
-  ['keydown', 'keyup'].forEach(function(type) {
-    var evt = new KeyboardEvent(type, {
-      key: '$keyValue', code: '$code', keyCode: $keyCode, which: $keyCode, bubbles: true
-    });
-    document.dispatchEvent(evt);
-    if (player) { player.dispatchEvent(evt); }
-  });
-  if (video) { $action }
+  var tries = 0;
+  var timer = setInterval(function() {
+    tries++;
+    var player = document.querySelector('#movie_player');
+    var video = document.querySelector('video');
+    if (video) {
+      clearInterval(timer);
+      if (player && player.focus) { player.focus(); }
+      ['keydown', 'keyup'].forEach(function(type) {
+        var evt = new KeyboardEvent(type, {
+          key: '$keyValue', code: '$code', keyCode: $keyCode, which: $keyCode, bubbles: true
+        });
+        document.dispatchEvent(evt);
+        if (player) { player.dispatchEvent(evt); }
+      });
+      $action
+    } else if (tries > 10) {
+      clearInterval(timer);
+    }
+  }, 150);
 })();
 """
 }

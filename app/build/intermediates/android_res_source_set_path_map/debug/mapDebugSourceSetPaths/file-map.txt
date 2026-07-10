@@ -1,0 +1,7 @@
+dev.jyotiraditya.dmt.app-pngs-0 C:\Android\Android Studio\Ever Terminal Player\Ever Terminal Player\app\build\generated\res\pngs\debug
+dev.jyotiraditya.dmt.app-updated_navigation_xml-1 C:\Android\Android Studio\Ever Terminal Player\Ever Terminal Player\app\build\generated\updated_navigation_xml\debug
+dev.jyotiraditya.dmt.app-packageDebugResources-2 C:\Android\Android Studio\Ever Terminal Player\Ever Terminal Player\app\build\intermediates\incremental\debug\packageDebugResources\merged.dir
+dev.jyotiraditya.dmt.app-packageDebugResources-3 C:\Android\Android Studio\Ever Terminal Player\Ever Terminal Player\app\build\intermediates\incremental\debug\packageDebugResources\stripped.dir
+dev.jyotiraditya.dmt.app-debug-4 C:\Android\Android Studio\Ever Terminal Player\Ever Terminal Player\app\build\intermediates\merged_res\debug\mergeDebugResources
+dev.jyotiraditya.dmt.app-debug-5 C:\Android\Android Studio\Ever Terminal Player\Ever Terminal Player\app\src\debug\res
+dev.jyotiraditya.dmt.app-main-6 C:\Android\Android Studio\Ever Terminal Player\Ever Terminal Player\app\src\main\res
