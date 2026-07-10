@@ -35,11 +35,11 @@ import java.net.URLEncoder
  * "<track title> video song", forces a real navigation into the first
  * result's watch page (so the WebView actually fires a page-load callback
  * instead of silently soft-navigating), spoofs a viewport matching the
- * preview box's own 1095x657 ratio, and auto-engages YouTube's own
- * fullscreen player once the video is ready — including clicking the
- * left-pointing "more controls" chevron that YouTube shows instead of the
- * fullscreen button when the player is too narrow to fit every control at
- * once, which is what was silently swallowing the auto-click before.
+ * preview box's own 1095x657 ratio, and auto-engages fullscreen directly
+ * through the page's own Fullscreen API — calling requestFullscreen() (or
+ * the WebView-native webkitEnterFullscreen()) on the video/player element
+ * itself, the same mechanism the browser invokes when a real tap on the
+ * player triggers it, without simulating any click or touch.
  *
  * The resulting fullscreen custom view is added into this composable's own
  * container (sized to the box, never the device's actual screen), so
@@ -97,6 +97,17 @@ fun YtVideoPreview(
                     settings.loadWithOverviewMode = true
                     settings.userAgentString = DESKTOP_UA
                     setBackgroundColor(android.graphics.Color.BLACK)
+
+                    // Without this, an outer scrollable parent (e.g. a
+                    // Column/LazyColumn hosting this preview) steals touch
+                    // gestures meant for the WebView itself, so it can
+                    // never process its own scrolling/taps — which in turn
+                    // was also throwing off the page's own layout timing
+                    // for revealing its controls.
+                    setOnTouchListener { v, _ ->
+                        v.parent?.requestDisallowInterceptTouchEvent(true)
+                        false
+                    }
 
                     webChromeClient = object : WebChromeClient() {
                         override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
@@ -218,6 +229,7 @@ private fun Context.findActivity(): Activity? {
     return null
 }
 
+
 private const val DESKTOP_UA =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
         "(KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
@@ -237,6 +249,12 @@ private const val SPOOF_VIEWPORT_JS = """
     Object.defineProperty(window, 'innerHeight', { get: function() { return h; }, configurable: true });
     Object.defineProperty(window, 'outerWidth', { get: function() { return w; }, configurable: true });
     Object.defineProperty(window, 'outerHeight', { get: function() { return h; }, configurable: true });
+    // YouTube's player only recalculates its own control layout (e.g.
+    // whether the fullscreen button fits directly or gets collapsed
+    // behind the overflow chevron) in response to an actual resize
+    // event — without dispatching one here, it can keep using whatever
+    // layout it assumed on initial load instead of the spoofed size.
+    window.dispatchEvent(new Event('resize'));
   } catch (e) {}
 })();
 """
@@ -271,14 +289,24 @@ private const val NAVIGATE_TO_FIRST_RESULT_JS = """
 """
 
 /** Runs on the watch page once it has actually finished loading. Starts
- * playback, then repeatedly tries to get the real player into fullscreen:
- * on a narrow player like this preview box, YouTube collapses the
- * right-side controls behind a left-pointing chevron ("more controls")
- * button instead of showing the fullscreen button directly — clicking
- * fullscreen before revealing that overflow is what was silently doing
- * nothing before. Each pass now checks whether the fullscreen button is
- * actually visible; if not, it hunts down and clicks the overflow toggle
- * first, then the following pass finds the now-revealed fullscreen button. */
+ * playback, then engages fullscreen the same way a real tap on the button
+ * would. YouTube only renders/shows its `.ytp-chrome-bottom` control bar
+ * (and lays out the buttons inside it) once it sees mouse/hover activity
+ * over the player — without that, `.ytp-right-controls`, the overflow
+ * chevron, and the fullscreen button are either absent or not yet laid
+ * out, which is exactly why a manual tap was "needed" before: a tap
+ * doesn't just click, it also wakes this hover state as a side effect.
+ * [wakeControls] reproduces that half — a synthetic mouseenter/mousemove
+ * over the player — without the click that pauses playback, so it's
+ * dispatched on every pass to keep the control bar awake for as long as
+ * the search for the overflow/fullscreen buttons takes. On a narrow
+ * player like this preview box, YouTube also reports fullscreen as
+ * unavailable and collapses the right-side controls behind that
+ * left-pointing chevron ("more controls") until it's expanded at least
+ * once, so the overflow toggle is clicked first, then the now-revealed
+ * fullscreen button itself is clicked — calling requestFullscreen()
+ * directly from a timer doesn't carry the same real user-gesture a
+ * button click does, so the Fullscreen API silently no-ops there. */
 private const val PLAY_AND_FULLSCREEN_JS = """
 (function() {
   function visible(el) {
@@ -297,6 +325,23 @@ private const val PLAY_AND_FULLSCREEN_JS = """
     }
     return null;
   }
+  function isFullscreen(video) {
+    return !!document.fullscreenElement || !!video.webkitDisplayingFullscreen;
+  }
+  function wakeControls(player) {
+    try { window.dispatchEvent(new Event('resize')); } catch (e) {}
+    ['mouseenter', 'mouseover', 'mousemove'].forEach(function(type) {
+      try {
+        var evt = new MouseEvent(type, {
+          bubbles: true, cancelable: true, view: window, clientX: 1, clientY: 1
+        });
+        player.dispatchEvent(evt);
+      } catch (e) {}
+    });
+    player.classList.remove('ytp-autohide');
+    var bottom = player.querySelector('.ytp-chrome-bottom');
+    if (bottom) { bottom.classList.remove('ytp-autohide'); }
+  }
 
   var readyTries = 0;
   var readyTimer = setInterval(function() {
@@ -308,37 +353,39 @@ private const val PLAY_AND_FULLSCREEN_JS = """
       video.muted = false;
       video.play().catch(function() {});
 
+      var overflowClicked = false;
       var fsTries = 0;
       var fsTimer = setInterval(function() {
         fsTries++;
-        if (document.fullscreenElement) {
+        wakeControls(player);
+
+        if (isFullscreen(video)) {
           clearInterval(fsTimer);
-          video.play().catch(function() {});
           return;
         }
-        if (player.focus) { player.focus(); }
 
         var rightControls = player.querySelector('.ytp-right-controls') || player;
         var fsBtn = rightControls.querySelector('.ytp-fullscreen-button');
 
         if (fsBtn && visible(fsBtn)) {
           fsBtn.click();
-        } else {
+        } else if (!overflowClicked) {
           var overflow = findOverflowToggle(rightControls) || findOverflowToggle(player);
-          if (overflow) {
+          if (overflow && visible(overflow)) {
             overflow.click();
-          } else {
-            ['keydown', 'keyup'].forEach(function(type) {
-              var evt = new KeyboardEvent(type, {
-                key: 'f', code: 'KeyF', keyCode: 70, which: 70, bubbles: true
-              });
-              document.dispatchEvent(evt);
-              player.dispatchEvent(evt);
-            });
+            overflowClicked = true;
           }
+        } else {
+          // Overflow was already clicked but the fullscreen button still
+          // isn't visible/found yet — allow another overflow click in
+          // case the first one toggled it back closed instead of open.
+          overflowClicked = false;
         }
-        if (fsTries > 40) { clearInterval(fsTimer); }
-      }, 350);
+        // Keeps going indefinitely until fullscreen actually engages —
+        // no try cap, so it always keeps clicking whatever's needed
+        // (overflow or fullscreen button) no matter how long the page
+        // takes to settle.
+      }, 400);
     } else if (readyTries > 30) {
       clearInterval(readyTimer);
     }
