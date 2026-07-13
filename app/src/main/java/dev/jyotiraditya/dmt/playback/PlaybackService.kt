@@ -3,6 +3,7 @@ package dev.jyotiraditya.dmt.playback
 import android.app.PendingIntent
 import android.content.Intent
 import android.graphics.Bitmap
+import android.media.audiofx.AudioEffect
 import android.net.Uri
 import android.os.Bundle
 import androidx.annotation.OptIn
@@ -20,6 +21,7 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.PlaybackStatsListener
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -134,7 +136,9 @@ class PlaybackService : MediaLibraryService() {
             .setUpstreamDataSourceFactory(httpDataSourceFactory)
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
         val dataSourceFactory = DefaultDataSource.Factory(this, cachedHttpFactory)
-        val player = ExoPlayer.Builder(this)
+        val renderersFactory = DefaultRenderersFactory(this)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+        val player = ExoPlayer.Builder(this, renderersFactory)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -177,7 +181,23 @@ class PlaybackService : MediaLibraryService() {
             ) {
                 saveSession()
             }
+
+            override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                broadcastEffectSession(
+                    AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION,
+                    audioSessionId,
+                )
+            }
         })
+        // Announce the audio session as soon as it exists too, not just on
+        // later changes, so third-party equalizer apps that listen for this
+        // broadcast can attach to it from the very first track.
+        if (player.audioSessionId != C.AUDIO_SESSION_ID_UNSET) {
+            broadcastEffectSession(
+                AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION,
+                player.audioSessionId,
+            )
+        }
         mediaSession = MediaLibrarySession.Builder(this, player, LibraryCallback())
             .setBitmapLoader(FreshCopyBitmapLoader(CacheBitmapLoader(DataSourceBitmapLoader(this))))
             .setSessionActivity(
@@ -606,13 +626,30 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
+    @OptIn(UnstableApi::class)
     override fun onDestroy() {
         scope.cancel()
         mediaSession?.run {
+            (player as? ExoPlayer)?.let {
+                broadcastEffectSession(
+                    AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION,
+                    it.audioSessionId,
+                )
+            }
             player.release()
             release()
         }
         mediaSession = null
         super.onDestroy()
+    }
+
+    private fun broadcastEffectSession(action: String, sessionId: Int) {
+        sendBroadcast(
+            Intent(action).apply {
+                putExtra(AudioEffect.EXTRA_AUDIO_SESSION, sessionId)
+                putExtra(AudioEffect.EXTRA_PACKAGE_NAME, packageName)
+                putExtra(AudioEffect.EXTRA_CONTENT_TYPE, AudioEffect.CONTENT_TYPE_MUSIC)
+            },
+        )
     }
 }

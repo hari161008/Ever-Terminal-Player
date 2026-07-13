@@ -40,6 +40,19 @@ class MainActivity : ComponentActivity() {
 
     private val playerViewModel: PlayerViewModel by viewModels()
 
+    override fun onStart() {
+        super.onStart()
+        playerViewModel.setAppForeground(true)
+    }
+
+    override fun onStop() {
+        // Minimising the app or switching away from it stops here, not in
+        // onPause, so this fires only once the app is actually no longer
+        // visible (not on transient things like the notification shade).
+        playerViewModel.setAppForeground(false)
+        super.onStop()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()

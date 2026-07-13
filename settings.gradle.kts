@@ -22,6 +22,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "DMT"
+rootProject.name = "Ever Terminal Player"
 include(":app")
 include(":innertube")

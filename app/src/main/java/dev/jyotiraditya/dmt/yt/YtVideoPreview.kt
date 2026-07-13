@@ -143,11 +143,13 @@ fun YtVideoPreview(
                     webViewClient = object : WebViewClient() {
                         override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                             super.onPageStarted(view, url, favicon)
+                            view.evaluateJavascript(SPOOF_VISIBILITY_JS, null)
                             view.evaluateJavascript(SPOOF_VIEWPORT_JS, null)
                         }
 
                         override fun onPageFinished(view: WebView, url: String) {
                             super.onPageFinished(view, url)
+                            view.evaluateJavascript(SPOOF_VISIBILITY_JS, null)
                             view.evaluateJavascript(SPOOF_VIEWPORT_JS, null)
                             when {
                                 url.contains("/watch") -> {
@@ -202,16 +204,25 @@ fun YtVideoPreview(
 
         // Polls the real YouTube video's current time/duration back out so
         // dmt's own slider tracks what's actually on screen, instead of the
-        // muted internal track running behind it.
+        // muted internal track running behind it. Also keeps nudging the
+        // WebView to stay resumed and keeps re-asserting the visibility
+        // spoof, since YouTube's player can re-attach its own
+        // visibility/focus listeners after internal state changes (e.g. an
+        // ad transition or a quality/player reload).
         LaunchedEffect(watchPageReady) {
             while (watchPageReady) {
-                webView?.evaluateJavascript(GET_PROGRESS_JS) { raw ->
-                    val cleaned = raw?.trim('"')?.takeIf { it.isNotEmpty() && it != "null" }
-                    val parts = cleaned?.split("|")
-                    val posSec = parts?.getOrNull(0)?.toDoubleOrNull()
-                    val durSec = parts?.getOrNull(1)?.toDoubleOrNull()
-                    if (posSec != null && durSec != null && durSec > 0) {
-                        onProgress((posSec * 1000).toLong(), (durSec * 1000).toLong())
+                webView?.let { wv ->
+                    wv.onResume()
+                    wv.resumeTimers()
+                    wv.evaluateJavascript(SPOOF_VISIBILITY_JS, null)
+                    wv.evaluateJavascript(GET_PROGRESS_JS) { raw ->
+                        val cleaned = raw?.trim('"')?.takeIf { it.isNotEmpty() && it != "null" }
+                        val parts = cleaned?.split("|")
+                        val posSec = parts?.getOrNull(0)?.toDoubleOrNull()
+                        val durSec = parts?.getOrNull(1)?.toDoubleOrNull()
+                        if (posSec != null && durSec != null && durSec > 0) {
+                            onProgress((posSec * 1000).toLong(), (durSec * 1000).toLong())
+                        }
                     }
                 }
                 delay(500)
@@ -239,6 +250,48 @@ private const val DESKTOP_UA =
  * against that exact size instead of the device's real, differently-shaped
  * screen. Wrapped defensively since some of these properties may already
  * be non-configurable on a given WebView build. */
+/** Makes the page believe it's always visible and focused, so YouTube's own
+ * player JS — which listens for the Page Visibility API and focus/blur to
+ * decide whether to pause playback — never sees a reason to pause on its
+ * own. This is what lets the video keep playing once the WebView's window
+ * itself is genuinely backgrounded/off-screen (dmt's own audio pipeline
+ * takes over for actual sound at that point, but the underlying page never
+ * needs to know that to keep ticking along). Installed at document-start
+ * (before YouTube's own scripts run) so the very first listener it attaches
+ * already reads the spoofed values, and reapplied on every poll tick in
+ * case the player re-attaches its own listeners later (e.g. after an ad
+ * break or a quality change). */
+private const val SPOOF_VISIBILITY_JS = """
+(function() {
+  try {
+    if (!window.__dmtVisibilitySpoofed) {
+      window.__dmtVisibilitySpoofed = true;
+      Object.defineProperty(document, 'hidden', { get: function() { return false; }, configurable: true });
+      Object.defineProperty(document, 'visibilityState', { get: function() { return 'visible'; }, configurable: true });
+      Object.defineProperty(document, 'webkitHidden', { get: function() { return false; }, configurable: true });
+      Object.defineProperty(document, 'webkitVisibilityState', { get: function() { return 'visible'; }, configurable: true });
+      document.hasFocus = function() { return true; };
+
+      // Swallow the events YouTube's player listens to for pausing on
+      // "hide"/"blur" before they reach any of its own listeners, by
+      // registering ours first and in the capture phase.
+      ['visibilitychange', 'webkitvisibilitychange', 'blur', 'pagehide', 'freeze'].forEach(function(type) {
+        window.addEventListener(type, function(e) {
+          e.stopImmediatePropagation();
+        }, true);
+        document.addEventListener(type, function(e) {
+          e.stopImmediatePropagation();
+        }, true);
+      });
+
+      // Some player code checks window focus directly rather than
+      // document.hasFocus(); report a permanently-focused window too.
+      window.addEventListener('blur', function(e) { e.stopImmediatePropagation(); }, true);
+    }
+  } catch (e) {}
+})();
+"""
+
 private const val SPOOF_VIEWPORT_JS = """
 (function() {
   try {

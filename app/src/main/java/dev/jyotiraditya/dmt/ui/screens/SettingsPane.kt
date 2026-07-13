@@ -13,16 +13,25 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.roundToIntRect
 import dev.jyotiraditya.dmt.R
 import dev.jyotiraditya.dmt.ui.DmtAction
 import dev.jyotiraditya.dmt.ui.DmtState
 import dev.jyotiraditya.dmt.ui.DmtView
 import dev.jyotiraditya.dmt.ui.components.Caption
+import dev.jyotiraditya.dmt.ui.components.TuiColorPickerPopup
 import dev.jyotiraditya.dmt.ui.components.TuiKey
 import dev.jyotiraditya.dmt.ui.components.tuiClickable
 import dev.jyotiraditya.dmt.ui.theme.AccentPalette
@@ -76,15 +85,50 @@ fun SettingsPane(state: DmtState, dispatch: (DmtAction) -> Unit) {
         ) {
             dispatch(DmtAction.Config(settings.copy(listSpecs = !settings.listSpecs)))
         }
-        SettingRow(
-            label = stringResource(R.string.set_accent),
-            value = AccentPalette[settings.accent % AccentPalette.size].first
-        ) {
-            dispatch(
-                DmtAction.Config(
-                    settings.copy(accent = (settings.accent + 1) % AccentPalette.size)
+        var accentAnchor by remember { mutableStateOf<IntRect?>(null) }
+        var showAccentPicker by remember { mutableStateOf(false) }
+
+        Column {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 5.dp)
+                    .onGloballyPositioned { accentAnchor = it.boundsInWindow().roundToIntRect() }
+            ) {
+                Text(
+                    text = stringResource(R.string.set_accent),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = TuiFg
                 )
+                TuiKey(
+                    label = "[ ${AccentPalette[settings.accent % AccentPalette.size].first} ]",
+                    onClick = { showAccentPicker = true }
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(TuiLine)
             )
+        }
+        if (showAccentPicker) {
+            accentAnchor?.let { anchor ->
+                TuiColorPickerPopup(
+                    anchorBounds = anchor,
+                    label = stringResource(R.string.set_accent),
+                    colors = AccentPalette,
+                    selectedIndex = settings.accent % AccentPalette.size,
+                    defaultIndex = 0,
+                    onSelect = { index ->
+                        showAccentPicker = false
+                        dispatch(DmtAction.Config(settings.copy(accent = index)))
+                    },
+                    onDismiss = { showAccentPicker = false },
+                )
+            }
         }
         SettingRow(
             label = stringResource(R.string.set_light_mode),

@@ -216,6 +216,22 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     private var ytSearchJob: Job? = null
     private var sleepEndAt: Long? = null
     private var sessionRestored = false
+
+    // Video mode plays its audio through the YtVideoPreview WebView itself,
+    // but that WebView only exists while the expanded player is on screen
+    // AND the app is in the foreground (collapsing the player tears the
+    // WebView down, and backgrounding the app gets its video paused by the
+    // OS regardless of composition). Rather than let sound stop in either
+    // case, playback is handed over to dmt's own (till-then muted) audio
+    // pipeline whenever the WebView can't be trusted to keep playing, and
+    // handed back — resynced to wherever the fallback ended up — once the
+    // WebView is genuinely on screen and foregrounded again.
+    private var appInForeground = true
+    private var videoAudioHandedToController = false
+    private var pendingIconAccent: Int? = null
+
+    private fun usingWebViewAudio(): Boolean =
+        _state.value.ytVideoMode && !videoAudioHandedToController
     private var pendingSaveSong: Innertube.SongItem? = null
     private var pendingSaveFormat: YtAudioFormat = YtAudioFormat.AAC
     private val _saveRequests = Channel<String>(Channel.BUFFERED)
@@ -351,19 +367,19 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             DmtAction.TogglePlay -> {
                 val nextPlaying = !_state.value.isPlaying
                 c?.togglePlayPause()
-                if (_state.value.ytVideoMode) sendYtVideoKey(if (nextPlaying) KEY_PLAY else KEY_PAUSE)
+                if (usingWebViewAudio()) sendYtVideoKey(if (nextPlaying) KEY_PLAY else KEY_PAUSE)
             }
             DmtAction.Next -> {
-                if (_state.value.ytVideoMode) sendYtVideoKey(KEY_ARROW_RIGHT) else c?.seekToNext()
+                if (usingWebViewAudio()) sendYtVideoKey(KEY_ARROW_RIGHT) else c?.seekToNext()
             }
             DmtAction.Prev -> {
-                if (_state.value.ytVideoMode) sendYtVideoKey(KEY_ARROW_LEFT) else c?.seekToPrevious()
+                if (usingWebViewAudio()) sendYtVideoKey(KEY_ARROW_LEFT) else c?.seekToPrevious()
             }
             DmtAction.ToggleShuffle -> c?.run { shuffleModeEnabled = !shuffleModeEnabled }
             DmtAction.CycleRepeat -> c?.cycleRepeat()
 
             is DmtAction.Seek -> {
-                if (_state.value.ytVideoMode) {
+                if (usingWebViewAudio()) {
                     val duration = _state.value.durationMs
                     if (duration > 0) {
                         val target = (action.fraction * duration).toLong()
@@ -383,14 +399,17 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             is DmtAction.YtVideoProgress -> {
-                if (_state.value.ytVideoMode) {
+                if (usingWebViewAudio()) {
                     _state.update {
                         it.copy(positionMs = action.positionMs, durationMs = action.durationMs)
                     }
                 }
             }
 
-            is DmtAction.Expand -> _state.update { it.copy(expanded = action.value) }
+            is DmtAction.Expand -> {
+                _state.update { it.copy(expanded = action.value) }
+                updateVideoAudioRouting()
+            }
 
             is DmtAction.RemoveAt -> c?.run {
                 if (action.index in 0 until mediaItemCount) removeMediaItem(action.index)
@@ -417,7 +436,15 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
                 if (old.cols != action.settings.cols) loadCover(c?.currentMediaItem)
-                if (old.accent != action.settings.accent) applyIcon(action.settings.accent)
+                // Swapping the launcher-icon alias (setComponentEnabledSetting)
+                // is what was causing the app to get killed and restarted the
+                // instant an accent was tapped — some launchers/OSes force a
+                // process kill to refresh the icon even with DONT_KILL_APP.
+                // The on-screen color already updates live via LocalAccent
+                // recomposition below, so the icon swap itself is deferred
+                // until the app is backgrounded (see setAppForeground), where
+                // a kill is invisible to the person using the app.
+                pendingIconAccent = action.settings.accent
                 if (old.skipSilence != action.settings.skipSilence) {
                     controller?.sendCustomCommand(
                         PlaybackService.CMD_SKIP_SILENCE,
@@ -562,10 +589,60 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         if (!id.startsWith(YT_ID_PREFIX)) return
         val entering = !_state.value.ytVideoMode
         _state.update { it.copy(ytVideoMode = entering) }
-        // The web view plays both video and audio itself when in video mode,
-        // so mute dmt's own audio pipeline to avoid double sound. Restore it
-        // when leaving video mode.
-        controller?.volume = if (entering) 0f else 1f
+        videoAudioHandedToController = false
+        if (entering) {
+            // Defer to updateVideoAudioRouting: it only mutes dmt's own
+            // audio pipeline (in favor of the WebView's own sound) if the
+            // WebView is actually visible and foregrounded right now;
+            // otherwise it keeps dmt's own pipeline as the audible source.
+            updateVideoAudioRouting()
+        } else {
+            controller?.volume = 1f
+        }
+    }
+
+    /** Called any time the WebView's ability to actually be heard may have
+     * changed — entering/leaving video mode, expanding/collapsing the
+     * player, or the app moving to/from the background — so the audible
+     * source (WebView vs. dmt's own pipeline) always matches what's really
+     * able to play right now, and playback never goes silent. */
+    private fun updateVideoAudioRouting() {
+        val s = _state.value
+        if (!s.ytVideoMode) return
+        val c = controller ?: return
+        val webViewVisible = s.expanded && appInForeground
+
+        if (!webViewVisible && !videoAudioHandedToController) {
+            videoAudioHandedToController = true
+            val pos = s.positionMs
+            if (pos > 0) c.seekTo(pos)
+            c.volume = 1f
+            if (s.isPlaying) c.play() else c.pause()
+        } else if (webViewVisible && videoAudioHandedToController) {
+            videoAudioHandedToController = false
+            c.volume = 0f
+            val duration = s.durationMs
+            if (duration > 0) {
+                val fraction = c.currentPosition.coerceAtLeast(0L).toFloat() / duration
+                sendYtVideoKey("$KEY_SEEK_PREFIX${fraction}")
+            }
+            sendYtVideoKey(KEY_PLAY)
+        }
+    }
+
+    /** Reported by [MainActivity] as the app itself (not just this one
+     * Activity instance) moves to/from the background, e.g. when the user
+     * minimises it or switches to another app. */
+    fun setAppForeground(foreground: Boolean) {
+        if (appInForeground == foreground) return
+        appInForeground = foreground
+        updateVideoAudioRouting()
+        if (!foreground) {
+            pendingIconAccent?.let { accent ->
+                pendingIconAccent = null
+                applyIcon(accent)
+            }
+        }
     }
 
     private fun connect() = viewModelScope.launch {
@@ -582,7 +659,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         loadLyrics(c.currentMediaItem)
         restoreSession()
         while (isActive) {
-            val videoMode = _state.value.ytVideoMode
+            val videoMode = usingWebViewAudio()
             val position = if (videoMode) _state.value.positionMs else c.currentPosition.coerceAtLeast(0L)
             val duration = if (videoMode) {
                 _state.value.durationMs
@@ -617,6 +694,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     private val listener = object : Player.Listener {
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             controller?.volume = 1f
+            videoAudioHandedToController = false
             _state.update { it.copy(nowPlayingId = mediaItem?.mediaId, error = null, ytVideoMode = false) }
             loadCover(mediaItem)
             loadTech(mediaItem)
