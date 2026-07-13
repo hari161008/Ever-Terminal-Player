@@ -25,13 +25,13 @@ base {
 }
 
 android {
-    namespace = "dev.jyotiraditya.dmt"
+    namespace = "com.coolappstore.everterminalplayer"
     compileSdk {
         version = release(37)
     }
 
     defaultConfig {
-        applicationId = "dev.jyotiraditya.dmt"
+        applicationId = "com.coolappstore.everterminalplayer"
         minSdk = 33
         targetSdk = 37
         versionCode = appVersionCode
